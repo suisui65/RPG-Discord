@@ -22,3 +22,5 @@ client.on("messageCreate", (message) => {
 });
 
 client.login(process.env.TOKEN);
+
+console.log("ENV TOKEN:", process.env.TOKEN);
