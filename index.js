@@ -1,13 +1,19 @@
 const { Client, GatewayIntentBits } = require("discord.js");
 
-console.log("ENV TOKEN:", process.env.TOKEN);
-
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds]
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
 });
 
 client.once("ready", () => {
-  console.log("Bot起動成功");
+  console.log("起動成功！");
+});
+
+client.on("messageCreate", (message) => {
+  if (message.author.bot) return;
+
+  if (message.content === "test") {
+    message.reply("動いてるよ！");
+  }
 });
 
 client.login(process.env.TOKEN);
