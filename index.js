@@ -35,6 +35,8 @@ client.on("messageCreate", (message) => {
   }
 });
 
-console.log("TOKEN:", process.env.TOKEN);
+client.login(process.env.TOKEN)
+  .then(() => console.log("ログイン成功"))
+  .catch(err => console.error("ログイン失敗:", err));
 
-client.login(process.env.TOKEN);
+console.log("TOKEN:", process.env.TOKEN);
