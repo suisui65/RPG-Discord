@@ -1,14 +1,13 @@
 {
   "name": "discord-rpg-bot",
   "version": "1.0.0",
-  "description": "RPG Bot",
   "main": "index.js",
+  "dependencies": {
+    "discord.js": "^14.13.0",
+    "mongodb": "^6.1.0",
+    "dotenv": "^16.3.1"
+  },
   "scripts": {
     "start": "node index.js"
-  },
-  "dependencies": {
-    "discord.js": "^14.14.1",
-    "dotenv": "^16.4.5",
-    "express": "^4.19.2"
   }
 }
