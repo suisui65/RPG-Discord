@@ -1,2 +1,0 @@
-# RPG-Discord
-DiscordでRPGだあああああ
