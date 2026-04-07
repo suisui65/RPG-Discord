@@ -13,28 +13,29 @@ const client = new Client({
   ]
 });
 
-// ===== Webサーバー（これが必要） =====
+// Webサーバー（Render対策）
 app.get("/", (req, res) => {
-  res.send("Bot is running!");
+  res.send("Bot is running");
 });
 
 app.listen(3000, () => {
   console.log("Webサーバー起動");
 });
 
-// ===== Discord =====
+// ログイン
+console.log("TOKEN確認:", process.env.TOKEN);
+
 client.once("ready", () => {
-  console.log("起動成功！");
+  console.log(`Logged in as ${client.user.tag}`);
 });
 
+// テストコマンド
 client.on("messageCreate", (message) => {
   if (message.author.bot) return;
 
-  if (message.content === "ping") {
+  if (message.content === "p@ping") {
     message.reply("pong!");
   }
 });
 
-client.login(process.env.TOKEN)
-  .then(() => console.log("ログイン成功"))
-  .catch(err => console.error("ログイン失敗:", err));
+client.login(process.env.TOKEN);
