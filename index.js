@@ -139,3 +139,24 @@ client.once('ready', () => {
 dbManager.connect(process.env.MONGO_URL).then(() => {
     client.login(process.env.DISCORD_TOKEN);
 });
+
+// ログイン処理を確実に行うための修正版
+async function startBot() {
+    try {
+        // 1. データベースに接続
+        await dbManager.connect(process.env.MONGO_URL);
+        console.log("📦 Database ready.");
+
+        // 2. Discordにログイン
+        await client.login(process.env.DISCORD_TOKEN);
+        
+        // ログイン成功時のログ
+        client.once('ready', () => {
+            console.log(`✅ Discordにログインしました: ${client.user.tag}`);
+        });
+    } catch (error) {
+        console.error("❌ 起動エラー:", error);
+    }
+}
+
+startBot();
