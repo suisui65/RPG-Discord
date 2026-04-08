@@ -136,3 +136,6 @@ client.on('messageCreate', async (message) => {
 dbManager.connect(process.env.MONGO_URL).then(() => {
     client.login(process.env.DISCORD_TOKEN);
 });
+client.once('ready', () => {
+    console.log(`✅ Discordにログインしました: ${client.user.tag}`);
+});
