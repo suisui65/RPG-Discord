@@ -131,11 +131,11 @@ client.on('messageCreate', async (message) => {
         }
     }
 });
+client.once('ready', () => {
+    console.log(`✅ Discordにログインしました: ${client.user.tag}`);
+});
 
 // ログイン処理
 dbManager.connect(process.env.MONGO_URL).then(() => {
     client.login(process.env.DISCORD_TOKEN);
-});
-client.once('ready', () => {
-    console.log(`✅ Discordにログインしました: ${client.user.tag}`);
 });
