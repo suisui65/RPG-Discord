@@ -131,32 +131,34 @@ client.on('messageCreate', async (message) => {
         }
     }
 });
-client.once('ready', () => {
-    console.log(`✅ Discordにログインしました: ${client.user.tag}`);
-});
-
-// ログイン処理
-dbManager.connect(process.env.MONGO_URL).then(() => {
-    client.login(process.env.DISCORD_TOKEN);
-});
-
-// ログイン処理を確実に行うための修正版
+//ここ
+// ログイン処理（デバッグ強化版）
 async function startBot() {
     try {
-        // 1. データベースに接続
+        console.log("⏳ データベースに接続中...");
         await dbManager.connect(process.env.MONGO_URL);
         console.log("📦 Database ready.");
 
-        // 2. Discordにログイン
-        await client.login(process.env.DISCORD_TOKEN);
+        console.log("⏳ Discordにログインを試行中...");
         
-        // ログイン成功時のログ
+        // ログイン前にイベントを登録しておく
         client.once('ready', () => {
             console.log(`✅ Discordにログインしました: ${client.user.tag}`);
         });
+
+        if (!process.env.DISCORD_TOKEN) {
+            console.error("❌ DISCORD_TOKEN が設定されていません！");
+            return;
+        }
+
+        await client.login(process.env.DISCORD_TOKEN);
+        console.log("🚀 Login command sent.");
+
     } catch (error) {
-        console.error("❌ 起動エラー:", error);
+        console.error("❌ 起動プロセスでエラーが発生しました:");
+        console.error(error);
     }
 }
 
 startBot();
+
