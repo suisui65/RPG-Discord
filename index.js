@@ -1,12 +1,15 @@
-// Renderの無料枠エラーを回避するためのコード
+// ==========================================
+// 1. Render無料枠用ポート開放 (最上部に配置)
+// ==========================================
 const http = require('http');
 http.createServer((req, res) => {
   res.write('Bot is running!');
   res.end();
 }).listen(process.env.PORT || 3000);
 
-// --- ここから下に、元のコードが続くようにしてください ---
-
+// ==========================================
+// 2. 必要モジュールの読み込み
+// ==========================================
 const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 const dbManager = require('./database');
 const logic = require('./logic');
@@ -17,10 +20,14 @@ const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMembers
     ]
 });
 
+// ==========================================
+// 3. ボットのメイン処理 (メッセージ受信)
+// ==========================================
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
 
@@ -72,8 +79,8 @@ client.on('messageCreate', async (message) => {
             channelId: message.channel.id, 
             hp: config.BOSS_DATA.max_hp, 
             active: true,
-            status: [], // 状態異常リスト
-            crystals: 0 // 特殊ギミック用
+            status: [], 
+            crystals: 0 
         };
         await battles.updateOne({ channelId: message.channel.id }, { $set: boss }, { upsert: true });
         
@@ -93,25 +100,20 @@ client.on('messageCreate', async (message) => {
         if (!user) return message.reply("まずは `p/登録` してね！");
         if (!boss) return message.reply("今は戦う相手がいないよ。 `b/ボス出現` させてね。");
 
-        // 回避判定 (SPD差を利用)
         const avoidRate = Math.max(0, Math.min(0.35, (boss.spd - user.stats.spd) / 100));
         if (Math.random() < avoidRate) {
             return message.reply(`💨 ${boss.name} に攻撃をかわされた！`);
         }
 
-        // ダメージ計算 (logic.jsを使用)
         const result = logic.calculateDamage(user.stats.atk, boss.def, user.stats.luk);
         const newHp = Math.max(0, boss.hp - result.dmg);
         
-        // ヘイト計算 (タンクは2倍)
         const jobWeights = { "タンク": 2.0, "剣士": 1.0, "魔術師": 0.8, "弓士": 0.5 };
         const addedHate = result.dmg * (jobWeights[user.job] || 1.0);
 
-        // データベース更新
         await battles.updateOne({ _id: boss._id }, { $set: { hp: newHp } });
         await users.updateOne({ _id: user._id }, { $inc: { hate: addedHate } });
 
-        // メッセージ送信
         const embed = new EmbedBuilder()
             .setTitle(`⚔ ${user.job}の攻撃！`)
             .setDescription(
@@ -124,15 +126,16 @@ client.on('messageCreate', async (message) => {
         
         message.reply({ embeds: [embed] });
 
-        // 撃破判定
         if (newHp <= 0) {
             await battles.updateOne({ _id: boss._id }, { $set: { active: false } });
             message.reply(`🎊 **${boss.name}** を討伐した！世界に平和が訪れた！`);
         }
     }
 });
-//ここ
-// ログイン処理（デバッグ強化版）
+
+// ==========================================
+// 4. 起動シーケンス (ログイン処理)
+// ==========================================
 async function startBot() {
     try {
         console.log("⏳ データベースに接続中...");
@@ -141,7 +144,6 @@ async function startBot() {
 
         console.log("⏳ Discordにログインを試行中...");
         
-        // ログイン前にイベントを登録しておく
         client.once('ready', () => {
             console.log(`✅ Discordにログインしました: ${client.user.tag}`);
         });
@@ -161,4 +163,3 @@ async function startBot() {
 }
 
 startBot();
-
