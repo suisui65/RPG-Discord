@@ -162,4 +162,6 @@ async function startBot() {
     }
 }
 
+client.on('debug', console.log);
+
 startBot();
