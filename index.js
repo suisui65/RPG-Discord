@@ -164,4 +164,8 @@ async function startBot() {
 
 client.on('debug', console.log);
 
+// エラーや切断の理由を強制的にログに出す
+client.on('error', err => console.error("❌ Discord Error:", err));
+client.on('shardError', err => console.error("❌ Shard Error:", err));
+
 startBot();
