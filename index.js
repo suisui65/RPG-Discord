@@ -1,3 +1,12 @@
+// Renderの無料枠エラーを回避するためのコード
+const http = require('http');
+http.createServer((req, res) => {
+  res.write('Bot is running!');
+  res.end();
+}).listen(process.env.PORT || 3000);
+
+// --- ここから下に、元のコードが続くようにしてください ---
+
 const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 const dbManager = require('./database');
 const logic = require('./logic');
