@@ -1,23 +1,24 @@
 module.exports = {
-    // HPバーの生成
+    // ダメージ計算（攻撃力、防御力、運）
+    calculateDamage: (atk, def, luk) => {
+        const baseDamage = Math.max(1, atk - (def / 2));
+        const isCritical = Math.random() < (luk / 100);
+        const dmg = Math.floor(isCritical ? baseDamage * 1.5 : baseDamage);
+        return { dmg, isCritical };
+    },
+
+    // 視覚的なHPバー生成
     createHpBar: (current, max) => {
-        const length = 10;
-        const filled = Math.max(0, Math.min(length, Math.round((current / max) * length)));
-        return "🟥".repeat(filled) + "⬛".repeat(length - filled);
+        const size = 10;
+        const progress = Math.round((current / max) * size);
+        return '`' + '■'.repeat(Math.max(0, progress)) + '□'.repeat(Math.max(0, size - progress)) + '`';
     },
 
-    // ダメージ計算
-    calculateDamage: (atk, def, luk, multiplier = 1.0) => {
-        let damage = Math.max(atk * 0.1, (atk * multiplier) - def);
-        let isCrit = Math.random() < Math.min(0.20, luk / 100);
-        if (isCrit) damage *= 1.5;
-        return { dmg: Math.floor(damage), isCrit };
-    },
-
-    // 🆕 状態異常の表示用
-    getStatusDisplay: (statusList) => {
-        if (!statusList || statusList.length === 0) return ""; // 何もないときは空白
-        // [ 毒 ] [ スタン ] のように並べる
-        return statusList.map(s => `［ ${s} ］`).join(" ");
+    // レベルアップ判定（100 EXPで昇格）
+    checkLevelUp: (exp) => {
+        if (exp >= 100) {
+            return { leveledUp: true, nextExp: exp - 100 };
+        }
+        return { leveledUp: false, nextExp: exp };
     }
 };
