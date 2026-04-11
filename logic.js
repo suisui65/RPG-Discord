@@ -1,30 +1,37 @@
 module.exports = {
-    calculateDamage: (attacker, receiver, isSkill = false) => {
-        const minGuarantee = isSkill ? 10 : 5;
-        let dmg = Math.max(minGuarantee, attacker.atk - (receiver.def * 0.5));
+    // ダメージ計算 (対抗型・最低保証)
+    calculateDamage: (attacker, receiver, minDmg = 10) => {
+        // 1. 基礎ダメージ
+        let dmg = Math.max(minDmg, attacker.atk - (receiver.def * 0.5));
         
-        // クリティカル判定 (最大20%)
+        // 2. クリティカル判定 (自分のLUK依存)
+        // 自分のLUKが20あれば最大20%
         const critRate = Math.min(0.20, attacker.luk / 100);
         const isCrit = Math.random() < critRate;
-        if (isCrit) dmg *= 1.5;
+        if (isCrit) dmg *= 1.7; // クリティカルは1.7倍
 
-        // 回避判定 (最大35%)
-        const dodgeRate = Math.min(0.35, (receiver.spd * 0.02));
+        // 3. 回避判定 (SPDの差分を利用)
+        // (受け手SPD - 攻め手SPD) が25以上で最大25%。最低5%。
+        let dodgeRate = (receiver.spd - attacker.spd) / 100;
+        dodgeRate = Math.max(0.05, Math.min(0.25, dodgeRate)); 
         const isDodge = Math.random() < dodgeRate;
 
-        // 根性判定 (最大10%)
-        const gutsRate = Math.min(0.10, receiver.luk / 100);
-        let survived = false;
-        if (!isDodge && dmg >= receiver.hp && Math.random() < gutsRate) {
-            dmg = receiver.hp - 1;
-            survived = true;
-        }
-
-        return { dmg: isDodge ? 0 : Math.floor(dmg), isCrit, isDodge, survived };
+        return { 
+            dmg: isDodge ? 0 : Math.floor(dmg), 
+            isCrit, 
+            isDodge 
+        };
     },
-    createHpBar: (current, max) => {
-        const size = 10;
-        const progress = Math.round((current / max) * size);
-        return '`' + '■'.repeat(Math.max(0, progress)) + '□'.repeat(Math.max(0, size - progress)) + '`';
+
+    // ヘイト抽選ロジック (ヘイトが高いほど当たりやすいが、低くても当たる)
+    // 参加者リスト [{id, hate}, ...] から一人選ぶ
+    selectTarget: (participants) => {
+        const totalHate = participants.reduce((sum, p) => sum + p.hate, 0);
+        let random = Math.random() * totalHate;
+        for (const p of participants) {
+            if (random < p.hate) return p.id;
+            random -= p.hate;
+        }
+        return participants[0].id; // 念のため
     }
 };
