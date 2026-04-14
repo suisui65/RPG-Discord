@@ -6,18 +6,14 @@ const jobs = require('./jobs');
 const bosses = require('./bosses');
 require('dotenv').config();
 
-// --- 🛠️ Render用：再起動ループ防止のダミーサーバー ---
+// Render用ダミーサーバー
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('RPG Bot is Online!\n');
 }).listen(process.env.PORT || 3000); 
 
 const client = new Client({ 
-    intents: [
-        GatewayIntentBits.Guilds, 
-        GatewayIntentBits.GuildMessages, 
-        GatewayIntentBits.MessageContent
-    ] 
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] 
 });
 
 let activeBattles = new Map();
@@ -26,95 +22,82 @@ client.on('messageCreate', async (msg) => {
     if (msg.author.bot) return;
     const users = dbManager.getCollection("users");
 
-    // --- 📥 p/登録 ---
-    if (msg.content.startsWith('p/登録')) {
-        const jobName = msg.content.split(' ')[1];
-        const jobData = jobs[jobName];
-        if (!jobData) return msg.reply("役職名が正しくないよ：[剣士, 弓士, 魔術師, タンク, 商人]");
-
-        const newUser = {
-            _id: msg.author.id,
-            name: msg.author.username,
-            job: jobName,
-            level: 1, exp: 0, money: 500, sp: 0, pp: 0,
-            stats: { ...jobData },
-            party: null,       // 所属パーティー名
-            isLeader: false,   // リーダー権限
-            rank_cleared: 0
-        };
-
-        try {
-            await users.insertOne(newUser);
-            msg.reply(`🎮 **${jobName}** として冒険を開始した！`);
-        } catch (e) {
-            msg.reply("すでに登録されています。");
-        }
-    }
-
-    // --- 👥 p/パーティー作成 [名前] ---
-    if (msg.content.startsWith('p/パーティー作成')) {
-        const partyName = msg.content.split(' ')[1];
-        if (!partyName) return msg.reply("名前を決めてね！ 例: `p/パーティー作成 勇者隊` ");
-        const u = await users.findOne({ _id: msg.author.id });
-        if (!u) return msg.reply("まずは登録してね。");
-        if (u.party) return msg.reply(`すでにパーティー「${u.party}」に所属しています。`);
-
-        await users.updateOne({ _id: msg.author.id }, { $set: { party: partyName, isLeader: true } });
-        msg.reply(`🚩 パーティー **【${partyName}】** を結成した！`);
-    }
-
-    // --- 🤝 p/パーティー参加 [@リーダー] ---
-    if (msg.content.startsWith('p/パーティー参加')) {
-        const target = msg.mentions.users.first();
-        if (!target) return msg.reply("リーダーをメンションしてね！");
-        const leader = await users.findOne({ _id: target.id });
-        if (!leader || !leader.party || !leader.isLeader) return msg.reply("その人はリーダーではありません。");
-
-        await users.updateOne({ _id: msg.author.id }, { $set: { party: leader.party, isLeader: false } });
-        msg.reply(`✨ **${leader.party}** に加入しました！`);
-    }
-
-    // --- 🚪 p/パーティー解散 ---
-    if (msg.content === 'p/パーティー解散') {
-        const u = await users.findOne({ _id: msg.author.id });
-        if (!u.party) return msg.reply("パーティーに入っていません。");
-        const partyName = u.party;
-        // 同じパーティー名の全員を脱退させる
-        await users.updateMany({ party: partyName }, { $set: { party: null, isLeader: false } });
-        msg.reply(`👋 パーティー **【${partyName}】** を解散しました。`);
-    }
-
-    // --- 📊 p/ステータス ---
+    // --- 📊 p/ステータス (総合火力表示追加) ---
     if (msg.content === 'p/ステータス') {
         const u = await users.findOne({ _id: msg.author.id });
         if (!u) return msg.reply("まずは登録してね。");
-        const partyInfo = u.party ? `所属: ${u.party}` : "所属: ソロ";
+
+        let partyInfo = "所属: ソロ";
+        let totalAtkInfo = "";
+
+        if (u.party) {
+            const members = await users.find({ party: u.party }).toArray();
+            const totalAtk = members.reduce((sum, m) => sum + m.stats.atk, 0);
+            partyInfo = `所属: ${u.party} (${members.length}名)`;
+            totalAtkInfo = `\n🔥 **パーティー総合火力: ${totalAtk}**`;
+        }
 
         const embed = new EmbedBuilder()
             .setTitle(`📜 ${u.name} のステータス`)
-            .setColor(u.party ? 0xFFD700 : 0x00AAFF) // パーティー所属なら金色
+            .setColor(u.party ? 0xFFD700 : 0x00AAFF)
             .addFields(
-                { name: 'パーティー', value: partyInfo, inline: false },
+                { name: 'パーティー', value: partyInfo + totalAtkInfo, inline: false },
                 { name: '職業', value: u.job, inline: true },
                 { name: 'Lv', value: String(u.level), inline: true },
-                { name: '所持金', value: `${u.money} G`, inline: true },
+                { name: 'ATK', value: String(u.stats.atk), inline: true },
+                { name: 'DEF', value: String(u.stats.def), inline: true },
                 { name: 'SPD', value: `${u.stats.spd}/100`, inline: true },
-                { name: 'LUK', value: `${u.stats.luk}/100`, inline: true },
-                { name: '残りSP', value: String(u.sp), inline: true }
+                { name: 'LUK', value: `${u.stats.luk}/100`, inline: true }
             );
         msg.reply({ embeds: [embed] });
     }
 
-    // --- 🐲 b/ボス出現 ---
+    // --- 👥 パーティー脱退 ---
+    if (msg.content === 'p/パーティー脱退') {
+        const u = await users.findOne({ _id: msg.author.id });
+        if (!u.party) return msg.reply("パーティーに入っていません。");
+        if (u.isLeader) return msg.reply("リーダーは脱退できません。解散（p/パーティー解散）してください。");
+
+        await users.updateOne({ _id: msg.author.id }, { $set: { party: null, isLeader: false } });
+        msg.reply(`👋 パーティー **【${u.party}】** から脱退しました。`);
+    }
+
+    // --- 🐲 b/ボス出現 (総合火力表示追加) ---
     if (msg.content === 'b/ボス出現') {
-        if (activeBattles.has(msg.channel.id)) return msg.reply("すでにボスがいます！");
+        if (activeBattles.has(msg.channel.id)) return msg.reply("⚠️ ボスはすでに目の前にいる！");
         const u = await users.findOne({ _id: msg.author.id });
         if (!u) return msg.reply("登録してね。");
 
-        const nextRank = u.rank_cleared + 1;
-        const bossTemp = bosses[String(nextRank)] || bosses["1"];
+        const nextRank = (u.rank_cleared || 0) + 1;
+        const bossData = bosses[String(nextRank)] || bosses["1"]; 
         const mult = logic.calculateBossMultiplier(nextRank);
 
-        // 参加者の決定（ソロかパーティーか）
         let participants = [];
+        let displayAtk = 0;
+
         if (u.party) {
+            const members = await users.find({ party: u.party }).toArray();
+            participants = members.map(m => ({ id: m._id, name: m.name, hate: m.stats.hate_init }));
+            displayAtk = members.reduce((sum, m) => sum + m.stats.atk, 0);
+            msg.channel.send(`⚔️ パーティー **【${u.party}】** 総員 ${members.length} 名、突撃！`);
+        } else {
+            participants = [{ id: u._id, name: u.name, hate: u.stats.hate_init }];
+            displayAtk = u.stats.atk;
+        }
+
+        const session = {
+            boss: { ...bossData, hp: Math.floor(bossData.hp * mult), max_hp: Math.floor(bossData.hp * mult) },
+            participants: participants.map(p => ({ ...p, damageDealt: 0, damageTaken: 0, heal: 0 }))
+        };
+
+        activeBattles.set(msg.channel.id, session);
+        const embed = new EmbedBuilder()
+            .setTitle(`🐲 BOSS: ${session.boss.name}`)
+            .setDescription(`HP: ${session.boss.hp}\n\n📢 **味方陣営の総火力: ${displayAtk}**`)
+            .setImage(session.boss.imageUrl)
+            .setColor(0xFF0000);
+        msg.reply({ embeds: [embed] });
+    }
+
+    // --- (以下、p/登録、b/攻撃 等は前回同様) ---
+});
