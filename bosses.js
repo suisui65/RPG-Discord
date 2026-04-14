@@ -4,7 +4,7 @@
  * mp_regen: 毎ターン(全員の一巡後)に回復する量
  */
 module.exports = {
-    "dragon_1": {
+    "1": {
         name: "イデア・ジェネシス",
         hp: 1100, max_hp: 1100,
         atk: 20, def: 20, spd: 8, luk: 10,
