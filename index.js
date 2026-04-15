@@ -156,4 +156,45 @@ const botController = {
         const res = logic.calculateDamage(session.boss, target.stats);
         
         target.hp -= res.dmg;
-        let log = `👹 **${session.boss.name}** の攻撃！ **${target.
+        let log = `👹 **${session.boss.name}** の攻撃！ **${target.name}** に ${res.dmg} ダメージ！`;
+        
+        await this.proceedTurn(channel, session, log);
+    }
+};
+
+client.on('messageCreate', async (msg) => {
+    if (msg.author.bot) return;
+    const users = db.getCollection("users");
+
+    if (msg.content === 'p/登録') {
+        const jobNames = Object.keys(jobs);
+        const randomJob = jobNames[Math.floor(Math.random() * jobNames.length)];
+        const jobData = jobs[randomJob];
+        const newUser = {
+            _id: msg.author.id,
+            name: msg.author.username,
+            job: randomJob,
+            lv: 1, stats: { ...jobData },
+            mp: jobData.mp, rank_cleared: 0
+        };
+        await users.updateOne({ _id: msg.author.id }, { $set: newUser }, { upsert: true });
+        msg.reply(`✅ **${randomJob}** として登録しました！`);
+    }
+
+    if (msg.content === 'b/ボス出現') {
+        const u = await users.findOne({ _id: msg.author.id });
+        if (u) await botController.startBattle(msg, u, users);
+    }
+
+    const session = activeBattles.get(msg.channel.id);
+    if (session) {
+        const current = session.turnOrder[session.currentIndex];
+        if (current.id === msg.author.id) {
+            if (msg.content === 'b/攻撃') await botController.handleAction(msg, "attack", session);
+            if (msg.content.startsWith('b/スキル')) await botController.handleAction(msg, "skill", session);
+            if (msg.content === 'b/逃げる') await botController.handleAction(msg, "escape", session);
+        }
+    }
+});
+
+db.connect(process.env.MONGO_URL).then(() => client.login(process.env.DISCORD_TOKEN));
