@@ -20,24 +20,24 @@ module.exports = {
         return participants[0]._id;
     },
 
-    // 全員のMP回復とフィールドトラップの更新
+    // 行動終了後の全体処理（MP回復 & トラップ爆発判定）
     processEndOfAction: (session) => {
         let logs = [];
-        // MP回復
+        // 1. 全員のMP回復
         session.participants.forEach(p => {
             const recovery = (p.job === "魔術師") ? 10 : 5;
             p.mp = Math.min(p.stats.max_mp || 40, (p.mp || 0) + recovery);
         });
         session.boss.mp = (session.boss.mp || 0) + 20;
 
-        // トラップ（オーバーブレス）の更新
+        // 2. トラップ（オーバーブレス）の更新
         if (session.field && session.field.traps) {
             session.field.traps = session.field.traps.filter(t => {
                 t.timer--;
                 if (t.timer <= 0) {
-                    const dmg = 80; // 崩壊ダメージ
-                    session.participants.forEach(p => p.hp -= dmg);
-                    logs.push(`💥 理想崩壊！全員が **${dmg}** の爆発ダメージを受けた！`);
+                    const dmg = 80; 
+                    session.participants.forEach(p => { p.hp -= dmg; });
+                    logs.push(`💥 **理想崩壊**！全員が **${dmg}** の爆発ダメージを受けた！`);
                     return false;
                 }
                 return true;
@@ -46,7 +46,7 @@ module.exports = {
         return logs;
     },
 
-    // ダメージ計算
+    // 基本ダメージ計算
     calculateDamage: (attacker, receiver) => {
         const atk = attacker.stats ? attacker.stats.atk : attacker.atk;
         const def = receiver.stats ? receiver.stats.def : receiver.def;
