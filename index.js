@@ -78,10 +78,10 @@ const botController = {
         }).join('\n');
 
         const mainEmbed = new EmbedBuilder()
-            .setDescription(`┅┅┅\n【ターン】\n${turnList}\n\n📣 **${current.name}のターンです**\n┅┅┅`)
+            .setDescription(`\n【ターン】\n${turnList}\n\n📣 **${current.name}のターンです**\n`)
             .setColor(current.isPlayer ? 0x00AAFF : 0xFF0000);
 
-        let commandText = "┅┅┅\n攻撃 スキル\nアイテム 逃げる\n┅┅┅";
+        let commandText = "\n攻撃 スキル\nアイテム 逃げる\n";
         if (current.isPlayer) {
             const pData = session.participants.find(p => p._id === current.id);
             const mySkills = Object.keys(skills).filter(k => skills[k].job === pData.job);
