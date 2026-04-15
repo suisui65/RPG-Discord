@@ -1,5 +1,5 @@
 const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
-const http = require('http'); // おまじない：ポート監視用
+const http = require('http'); 
 const db = require('./database');
 const logic = require('./logic');
 const bosses = require('./bosses');
@@ -8,11 +8,15 @@ const bossSkills = require('./boss_skills');
 const jobs = require('./jobs');
 require('dotenv').config();
 
-// --- おまじない：Renderのポート開放エラー（Port scan timeout）対策 ---
+// --- 【重要】Render用のポートバインドおまじない ---
+const PORT = process.env.PORT || 8080;
 http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.write("BOT IS ALIVE");
     res.end();
-}).listen(process.env.PORT || 8080);
+}).listen(PORT, '0.0.0.0', () => {
+    console.log(`📡 Port listening on ${PORT}`);
+});
 
 const client = new Client({ 
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] 
@@ -61,16 +65,15 @@ const botController = {
     async renderTurn(channel, session) {
         const current = session.turnOrder[session.currentIndex];
         
-        // 【ターン】セクションの構築
         const turnList = session.turnOrder.map((e, i) => {
             const isCurrent = i === session.currentIndex;
             const arrow = isCurrent ? " ◀️" : "";
             
             if (e.isPlayer) {
                 const p = session.participants.find(part => part._id === e.id);
-                return `・${e.name}${arrow}\n  ：HP${p.hp} MP${p.mp}`;
+                return `・${e.name}${arrow}\n：HP${p.hp} MP${p.mp}`;
             } else {
-                return `・${e.name}${arrow}\n  ：HP${session.boss.hp}`;
+                return `・${e.name}${arrow}\n：HP${session.boss.hp}`;
             }
         }).join('\n');
 
@@ -78,7 +81,6 @@ const botController = {
             .setDescription(`┅┅┅\n【ターン】\n${turnList}\n\n📣 **${current.name}のターンです**\n┅┅┅`)
             .setColor(current.isPlayer ? 0x00AAFF : 0xFF0000);
 
-        // コマンドセクションの構築
         let commandText = "┅┅┅\n攻撃 スキル\nアイテム 逃げる\n┅┅┅";
         if (current.isPlayer) {
             const pData = session.participants.find(p => p._id === current.id);
@@ -136,11 +138,9 @@ const botController = {
     async proceedTurn(channel, session, actionLog) {
         await channel.send(actionLog);
         
-        // MP回復 & フィールド更新
         const fieldLogs = logic.processEndOfAction(session);
         if (fieldLogs.length > 0) await channel.send(fieldLogs.join('\n'));
 
-        // DBにMP状態を保存
         const users = db.getCollection("users");
         for (const p of session.participants) {
             await users.updateOne({ _id: p._id }, { $set: { mp: p.mp } });
@@ -169,7 +169,6 @@ client.on('messageCreate', async (msg) => {
     if (msg.author.bot) return;
     const users = db.getCollection("users");
 
-    // 登録
     if (msg.content === 'p/登録') {
         const jobNames = Object.keys(jobs);
         const randomJob = jobNames[Math.floor(Math.random() * jobNames.length)];
@@ -182,7 +181,6 @@ client.on('messageCreate', async (msg) => {
         msg.reply(`✅ **${randomJob}** として登録しました！`);
     }
 
-    // ステータス
     if (msg.content === 'p/ステータス') {
         const u = await users.findOne({ _id: msg.author.id });
         if (!u) return msg.reply("❌ `p/登録` してください。");
@@ -195,13 +193,11 @@ client.on('messageCreate', async (msg) => {
         return msg.reply({ embeds: [embed] });
     }
 
-    // ボス出現
     if (msg.content === 'b/ボス出現') {
         const u = await users.findOne({ _id: msg.author.id });
         if (u) await botController.startBattle(msg, u, users);
     }
 
-    // ターン行動
     const session = activeBattles.get(msg.channel.id);
     if (session) {
         const current = session.turnOrder[session.currentIndex];
@@ -213,7 +209,6 @@ client.on('messageCreate', async (msg) => {
     }
 });
 
-// 起動
 db.connect(process.env.MONGO_URL).then(() => {
     console.log("✅ DB Connected");
     client.login(process.env.DISCORD_TOKEN).then(() => console.log("✅ BOT Online"));
