@@ -1,4 +1,5 @@
 const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+const http = require('http'); // おまじない：ポート監視用
 const db = require('./database');
 const logic = require('./logic');
 const bosses = require('./bosses');
@@ -6,6 +7,12 @@ const skills = require('./skills');
 const bossSkills = require('./boss_skills');
 const jobs = require('./jobs');
 require('dotenv').config();
+
+// --- おまじない：Renderのポート開放エラー（Port scan timeout）対策 ---
+http.createServer((req, res) => {
+    res.write("BOT IS ALIVE");
+    res.end();
+}).listen(process.env.PORT || 8080);
 
 const client = new Client({ 
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] 
@@ -22,8 +29,7 @@ const botController = {
         const bData = bosses[String(nextRank)] || bosses["1"];
         const mult = logic.calculateBossMultiplier(nextRank);
 
-        // 参加者のステータスを初期化
-        const members = [user]; // 連合システムがある場合はここを拡張
+        const members = [user]; 
         const entities = logic.getTurnOrder(members, bData);
 
         const session = {
@@ -38,9 +44,7 @@ const botController = {
                 name: m.name, 
                 job: m.job,
                 hp: m.stats.hp, 
-                max_hp: m.stats.hp,
                 mp: m.mp || 40, 
-                max_mp: m.stats.max_mp || 40,
                 stats: m.stats 
             })),
             turnOrder: entities,
@@ -53,82 +57,75 @@ const botController = {
         await this.renderTurn(msg.channel, session);
     },
 
-    // ターン状況の描画（ご要望の形式を再現）
+    // ターン状況の描画（ご要望レイアウト再現）
     async renderTurn(channel, session) {
         const current = session.turnOrder[session.currentIndex];
         
-        // 【ターン】部分のテキスト生成
+        // 【ターン】セクションの構築
         const turnList = session.turnOrder.map((e, i) => {
             const isCurrent = i === session.currentIndex;
             const arrow = isCurrent ? " ◀️" : "";
             
             if (e.isPlayer) {
                 const p = session.participants.find(part => part._id === e.id);
-                return `・**${e.name}**${arrow}\n  ：HP${p.hp} MP${p.mp}`;
+                return `・${e.name}${arrow}\n  ：HP${p.hp} MP${p.mp}`;
             } else {
-                return `・**${e.name}**${arrow}\n  ：HP${session.boss.hp}`;
+                return `・${e.name}${arrow}\n  ：HP${session.boss.hp}`;
             }
         }).join('\n');
 
         const mainEmbed = new EmbedBuilder()
-            .setTitle(`🔄 ターン ${session.turnCount}`)
-            .setDescription(`┅┅┅\n【ターン】\n${turnList}\n\n📣 **${current.name}** のターンです\n┅┅┅`)
+            .setDescription(`┅┅┅\n【ターン】\n${turnList}\n\n📣 **${current.name}のターンです**\n┅┅┅`)
             .setColor(current.isPlayer ? 0x00AAFF : 0xFF0000);
 
-        // 操作ガイド（スキル名もここに表示）
-        const currentP = session.participants.find(p => p._id === current.id);
-        let guideText = "┅┅┅\n`b/攻撃` `b/スキル [名]`\n`b/アイテム` `b/逃げる` \n┅┅┅";
-        
+        // コマンドセクションの構築
+        let commandText = "┅┅┅\n攻撃 スキル\nアイテム 逃げる\n┅┅┅";
         if (current.isPlayer) {
-            const mySkills = Object.keys(skills).filter(k => skills[k].job === currentP.job);
-            guideText += `\n**【使えるスキル】**\n${mySkills.join(', ')}`;
+            const pData = session.participants.find(p => p._id === current.id);
+            const mySkills = Object.keys(skills).filter(k => skills[k].job === pData.job);
+            commandText += `\n**【${pData.job}のスキル】**\n${mySkills.join(', ')}`;
         }
 
-        const guideEmbed = new EmbedBuilder()
-            .setDescription(guideText)
-            .setColor(0xCCCCCC);
+        const commandEmbed = new EmbedBuilder()
+            .setDescription(commandText)
+            .setColor(0x333333);
 
-        await channel.send({ embeds: [mainEmbed, guideEmbed] });
+        await channel.send({ embeds: [mainEmbed, commandEmbed] });
 
-        // ボスのターンの場合は自動行動
         if (!current.isPlayer) {
             setTimeout(() => this.bossAction(channel, session), 2000);
         }
     },
 
-    // 行動処理（攻撃/スキル）
+    // 行動処理
     async handleAction(msg, type, session) {
         const users = db.getCollection("users");
-        const uData = await users.findOne({ _id: msg.author.id });
         const pInSession = session.participants.find(p => p._id === msg.author.id);
         let log = "";
 
         if (type === "attack") {
-            const res = logic.calculateDamage(uData.stats, session.boss);
+            const res = logic.calculateDamage(pInSession.stats, session.boss);
             session.boss.hp -= res.dmg;
-            log = `⚔️ **${uData.name}** の攻撃！ **${res.dmg}** ダメージ！`;
+            log = `⚔️ **${pInSession.name}** の攻撃！ **${res.dmg}** ダメージ！`;
         } else if (type === "skill") {
             const skillName = msg.content.replace('b/スキル ', '').trim();
             const skill = skills[skillName];
             
-            if (!skill || skill.job !== uData.job) return msg.reply("❌ そのスキルは使えません。");
-            if (pInSession.mp < skill.cost) return msg.reply("❌ MPが足りません！");
+            if (!skill || skill.job !== pInSession.job) return msg.reply("❌ そのスキルは使えません。");
+            if (pInSession.mp < skill.cost) return msg.reply("❌ MP不足！");
 
-            const res = logic.calculateDamage(uData.stats, session.boss);
+            const res = logic.calculateDamage(pInSession.stats, session.boss);
             const d = Math.max(skill.minDmg || 0, res.dmg);
             session.boss.hp -= d;
             pInSession.mp -= skill.cost;
-            log = `🪄 **${uData.name}** の **${skillName}**！ **${d}** ダメージ！`;
-            
-            // DBのMPも更新
-            await users.updateOne({ _id: uData._id }, { $set: { mp: pInSession.mp } });
+            log = `🪄 **${pInSession.name}** の **${skillName}**！ **${d}** ダメージ！`;
         } else if (type === "escape") {
-            msg.channel.send("🏃💨 命からがら逃げ出した！");
+            msg.channel.send("🏃💨 逃げ出した！");
             return activeBattles.delete(msg.channel.id);
         }
 
         if (session.boss.hp <= 0) {
-            msg.channel.send(`${log}\n🎊 **${session.boss.name}** を撃破しました！`);
+            msg.channel.send(`${log}\n🎊 **${session.boss.name}** を撃破！`);
             activeBattles.delete(msg.channel.id);
         } else {
             await this.proceedTurn(msg.channel, session, log);
@@ -139,9 +136,15 @@ const botController = {
     async proceedTurn(channel, session, actionLog) {
         await channel.send(actionLog);
         
-        // MP回復などの全体処理
+        // MP回復 & フィールド更新
         const fieldLogs = logic.processEndOfAction(session);
         if (fieldLogs.length > 0) await channel.send(fieldLogs.join('\n'));
+
+        // DBにMP状態を保存
+        const users = db.getCollection("users");
+        for (const p of session.participants) {
+            await users.updateOne({ _id: p._id }, { $set: { mp: p.mp } });
+        }
 
         session.currentIndex = (session.currentIndex + 1) % session.turnOrder.length;
         if (session.currentIndex === 0) session.turnCount++;
@@ -166,26 +169,39 @@ client.on('messageCreate', async (msg) => {
     if (msg.author.bot) return;
     const users = db.getCollection("users");
 
+    // 登録
     if (msg.content === 'p/登録') {
         const jobNames = Object.keys(jobs);
         const randomJob = jobNames[Math.floor(Math.random() * jobNames.length)];
         const jobData = jobs[randomJob];
         const newUser = {
-            _id: msg.author.id,
-            name: msg.author.username,
-            job: randomJob,
-            lv: 1, stats: { ...jobData },
-            mp: jobData.mp, rank_cleared: 0
+            _id: msg.author.id, name: msg.author.username, job: randomJob,
+            lv: 1, stats: { ...jobData }, mp: jobData.mp, rank_cleared: 0
         };
         await users.updateOne({ _id: msg.author.id }, { $set: newUser }, { upsert: true });
         msg.reply(`✅ **${randomJob}** として登録しました！`);
     }
 
+    // ステータス
+    if (msg.content === 'p/ステータス') {
+        const u = await users.findOne({ _id: msg.author.id });
+        if (!u) return msg.reply("❌ `p/登録` してください。");
+        const embed = new EmbedBuilder()
+            .setTitle(`${u.name} のステータス`)
+            .addFields(
+                { name: "職業", value: u.job, inline: true },
+                { name: "MP", value: `${u.mp}/${u.stats.max_mp || 40}`, inline: true }
+            );
+        return msg.reply({ embeds: [embed] });
+    }
+
+    // ボス出現
     if (msg.content === 'b/ボス出現') {
         const u = await users.findOne({ _id: msg.author.id });
         if (u) await botController.startBattle(msg, u, users);
     }
 
+    // ターン行動
     const session = activeBattles.get(msg.channel.id);
     if (session) {
         const current = session.turnOrder[session.currentIndex];
@@ -197,4 +213,8 @@ client.on('messageCreate', async (msg) => {
     }
 });
 
-db.connect(process.env.MONGO_URL).then(() => client.login(process.env.DISCORD_TOKEN));
+// 起動
+db.connect(process.env.MONGO_URL).then(() => {
+    console.log("✅ DB Connected");
+    client.login(process.env.DISCORD_TOKEN).then(() => console.log("✅ BOT Online"));
+});
