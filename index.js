@@ -23,7 +23,6 @@ const client = new Client({
 const activeBattles = new Map();
 
 const botController = {
-    // 登録
     async registerUser(msg, users) {
         const jobNames = Object.keys(jobs);
         const randomJob = jobNames[Math.floor(Math.random() * jobNames.length)];
@@ -37,7 +36,6 @@ const botController = {
         return msg.reply(`✅ **${randomJob}** として登録完了しました！`);
     },
 
-    // ターン状況描画
     async renderTurn(channel, session) {
         const current = session.turnOrder[session.currentIndex];
         const turnList = session.turnOrder.map((e, i) => {
@@ -60,7 +58,7 @@ const botController = {
         if (current.isPlayer) {
             const pData = session.participants.find(p => p._id === current.id);
             if (pData.hp <= 0) {
-                commandText = "💀 あなたは戦闘不能です。仲間の応援をしましょう。";
+                commandText = "💀 戦闘不能です。";
             } else {
                 const mySkills = Object.keys(skills).filter(k => skills[k].job === pData.job);
                 const skillListText = mySkills.map(sName => {
@@ -75,18 +73,14 @@ const botController = {
         const commandEmbed = new EmbedBuilder().setDescription(commandText).setColor(0x333333);
         await channel.send({ embeds: [mainEmbed, commandEmbed] });
 
-        // ボスのターン、または戦闘不能プレイヤーのターンならスキップ処理
         if (!current.isPlayer) {
             setTimeout(() => this.bossAction(channel, session), 2000);
         } else {
             const pData = session.participants.find(p => p._id === current.id);
-            if (pData.hp <= 0) {
-                setTimeout(() => this.proceedTurn(channel, session, `⌛ **${pData.name}** は戦闘不能のためスキップされます。`), 1500);
-            }
+            if (pData.hp <= 0) setTimeout(() => this.proceedTurn(channel, session, `⌛ **${pData.name}** スキップ`), 1500);
         }
     },
 
-    // バトル開始
     async startBattle(msg, user, users) {
         if (activeBattles.has(msg.channel.id)) return msg.reply("⚠️ 戦闘中です");
         const nextRank = (user.rank_cleared || 0) + 1;
@@ -105,7 +99,7 @@ const botController = {
 
     async handleAction(msg, type, session) {
         const pInSession = session.participants.find(p => p._id === msg.author.id);
-        if (pInSession.hp <= 0) return msg.reply("❌ あなたは戦闘不能です。");
+        if (pInSession.hp <= 0) return msg.reply("❌ 戦闘不能です。");
 
         let log = "";
         if (type === "attack") {
@@ -126,24 +120,28 @@ const botController = {
         }
 
         if (session.boss.hp <= 0) {
-            msg.channel.send(`${log}\n🎊 **討伐成功！** ボスを撃破しました！`);
-            activeBattles.delete(msg.channel.id);
-        } else {
-            await this.proceedTurn(msg.channel, session, log);
+            msg.channel.send(`${log}\n🎊 **討伐成功！**`);
+            return activeBattles.delete(msg.channel.id);
         }
+
+        // --- 【新規】ボスの反撃判定 (30%の確率) ---
+        let counterLog = "";
+        if (Math.random() < 0.3) {
+            const res = logic.calculateDamage(session.boss, pInSession.stats);
+            pInSession.hp = Math.max(0, pInSession.hp - res.dmg);
+            counterLog = `\n⚠️ **ボスの反撃！** **${pInSession.name}** に ${res.dmg} ダメージ！`;
+            if (pInSession.hp <= 0) counterLog += `\n💀 **${pInSession.name}** が力尽きた！`;
+        }
+
+        await this.proceedTurn(msg.channel, session, log + counterLog);
     },
 
     async proceedTurn(channel, session, actionLog) {
         await channel.send(actionLog);
 
-        // 全滅チェック
         const alivePlayers = session.participants.filter(p => p.hp > 0);
         if (alivePlayers.length === 0) {
-            const embed = new EmbedBuilder()
-                .setTitle("💀 GAME OVER")
-                .setDescription(`全員が戦闘不能になりました...\n**${session.boss.name}** の討伐失敗です。`)
-                .setColor(0x000000);
-            await channel.send({ embeds: [embed] });
+            await channel.send("💀 全員が戦闘不能になりました。討伐失敗です。");
             return activeBattles.delete(channel.id);
         }
 
@@ -153,27 +151,20 @@ const botController = {
             for (let s in p.cooldowns) if (p.cooldowns[s] > 0) p.cooldowns[s]--;
         }
         
-        const fieldLogs = logic.processEndOfAction(session);
-        if (fieldLogs.length > 0) await channel.send(fieldLogs.join('\n'));
-        
-        const users = db.getCollection("users");
-        for (const p of session.participants) await users.updateOne({ _id: p._id }, { $set: { mp: p.mp } });
-        
         session.currentIndex = (session.currentIndex + 1) % session.turnOrder.length;
         if (session.currentIndex === 0) session.turnCount++;
         await this.renderTurn(channel, session);
     },
 
     async bossAction(channel, session) {
-        // 生存しているプレイヤーのみをターゲットにする
         const alivePlayers = session.participants.filter(p => p.hp > 0);
-        if (alivePlayers.length === 0) return; // proceedTurnで判定済み
+        if (alivePlayers.length === 0) return;
 
+        // ボス本人のターン（確定攻撃）
         const target = alivePlayers[Math.floor(Math.random() * alivePlayers.length)];
         const res = logic.calculateDamage(session.boss, target.stats);
-        
         target.hp = Math.max(0, target.hp - res.dmg);
-        let log = `👹 **${session.boss.name}** の攻撃！ **${target.name}** に ${res.dmg} ダメージ！`;
+        let log = `👹 **${session.boss.name}** の確定攻撃！ **${target.name}** に ${res.dmg} ダメージ！`;
         if (target.hp <= 0) log += `\n💀 **${target.name}** が力尽きた！`;
 
         await this.proceedTurn(channel, session, log);
@@ -185,28 +176,12 @@ client.on('messageCreate', async (msg) => {
     const users = db.getCollection("users");
 
     if (msg.content === 'p/登録') return await botController.registerUser(msg, users);
-
     if (msg.content === 'p/ステータス') {
         const u = await users.findOne({ _id: msg.author.id });
-        if (!u) return msg.reply("❌ `p/登録` してください。");
-        const getBonus = (key) => (u.equip && u.equip[key] > 0) ? ` (+${u.equip[key]})` : "";
-        const pad = (v) => String(v).padStart(3, '0');
-        const embed = new EmbedBuilder()
-            .setTitle(`📜 ステータス`)
-            .setDescription(`<@${u._id}> ${u.job} Lv${u.lv || 1}`)
-            .setColor(0x00FF00)
-            .addFields(
-                { name: "HP", value: `${u.stats.hp}${getBonus('hp')}`, inline: true },
-                { name: "MP", value: `${u.mp || 0} / ${u.stats.max_mp || 40}${getBonus('mp')}`, inline: true },
-                { name: "\u200B", value: "\u200B", inline: true },
-                { name: "攻撃力", value: `${pad(u.stats.atk)}${getBonus('atk')}`, inline: true },
-                { name: "防御力", value: `${pad(u.stats.def)}${getBonus('def')}`, inline: true },
-                { name: "スピード", value: `${pad(u.stats.spd)}${getBonus('spd')}`, inline: true },
-                { name: "ラック", value: `${pad(u.stats.luk)}${getBonus('luk')}`, inline: true }
-            );
+        if (!u) return msg.reply("❌ 要登録");
+        const embed = new EmbedBuilder().setTitle("📜").setDescription(`<@${u._id}> ${u.job}`);
         return msg.reply({ embeds: [embed] });
     }
-
     if (msg.content === 'b/ボス出現') {
         const u = await users.findOne({ _id: msg.author.id });
         if (u) await botController.startBattle(msg, u, users);
@@ -222,7 +197,6 @@ client.on('messageCreate', async (msg) => {
     }
 });
 
-db.connect(process.env.MONGO_URL).then(() => {
-    client.login(process.env.DISCORD_TOKEN);
+db.connect(process.env.MONGO_URL).then(() => client.login(process.env.DISCORD_TOKEN));
+    }
 });
-
