@@ -198,5 +198,3 @@ client.on('messageCreate', async (msg) => {
 });
 
 db.connect(process.env.MONGO_URL).then(() => client.login(process.env.DISCORD_TOKEN));
-    }
-});
